@@ -88,7 +88,7 @@ while True:
     # sobely = cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize=5)
 
     # print(gray.shape)
-    n = 7
+    n = 9
     # grayO = gray.copy()
     gray = grayO.copy()
     gray = (gray + (final_mask / 255.0) * n * gray) / (n + 1)
@@ -96,11 +96,19 @@ while True:
 
     # edges = cv2.Canny(grayO, 5, 20)
     edges2 = cv2.Canny(gray, 5, 20)
-
+    masked = edges2.copy()
     if not (background is None):
         frame1 = np.abs(grayO - background)
-        frame1 = cv2.inRange(frame1, 100, 255)
-        cv2.imshow("b", edges2 & frame1)
+        frame1 = cv2.inRange(frame1, 150, 255)
+        cv2.imshow("canny and background", imutils.resize(np.vstack([edges2, frame1]), height=700))
+        blurred_grayO = cv2.GaussianBlur(grayO, (11, 11), 0)
+        blurred_background = cv2.GaussianBlur(background, (11, 11), 0)
+        frame1 = np.abs(grayO - background)
+        frame1 = cv2.inRange(frame1, 7, 245)
+        edges2 = cv2.morphologyEx(edges2, cv2.MORPH_CLOSE, kernelClose)
+        cv2.imshow("canny and background with blur", imutils.resize(np.vstack([edges2, frame1]), height=700))
+        cv2.imshow("canny&background", edges2 & frame1)
+        masked = edges2 & frame1
     else:
         print(np.sum(edges2 / 255.0))
         canny_not_found = np.sum(edges2 / 255.0) < 20
@@ -119,9 +127,19 @@ while True:
     # final_sobel = (sobelx+sobely)
     # final_sobel = (np.abs(sobelx)+np.abs(sobely))/2
 
-    cv2.imshow("dd", imutils.resize(np.vstack([mask, mask2, final_mask]), height=700))
-    cv2.imshow("dddd", edges2)
-    time.sleep(0.001)
+    # cv2.imshow("dd", imutils.resize(np.vstack([mask, mask2, final_mask]), height=700))
+    cv2.imshow("canny only", edges2)
+    kernelOpen = np.ones((1, 1))
+    kernelClose = np.ones((1, 1))
+
+    maskOpen = cv2.morphologyEx(masked, cv2.MORPH_OPEN, kernelOpen)
+    maskClose = cv2.morphologyEx(maskOpen, cv2.MORPH_CLOSE, kernelClose)
+    # cv2.imshow("open and close", imutils.resize(np.vstack([maskOpen1, maskClose1]), height=700))
+    cv2.imshow("open1 and close1", imutils.resize(np.vstack([maskOpen, maskClose]), height=700))
+    # cv2.imshow("close and close1", imutils.resize(np.vstack([maskClose1, maskClose]), height=700))
+    # cv2.imshow("after open_close", maskClose1)
+    # time.sleep(0.001)
+    cv2.waitKey()
     # find contours in the mask and initialize the current
     # (x, y) center of the ball
     cnts = cv2.findContours(maskClose.copy(), cv2.RETR_EXTERNAL,
@@ -136,17 +154,19 @@ while True:
         # centroid
         c = max(cnts, key=cv2.contourArea)
         ((x, y), radius) = cv2.minEnclosingCircle(c)
-        M = cv2.moments(c)
-        center = (int(M["m10"] / M["m00"]), int(M["m01"] / M["m00"]))
 
         # only proceed if the radius meets a minimum size
         if radius > 3:
-            # draw the circle and centroid on the frame,
-            # then update the list of tracked points
-            cv2.circle(frame, (int(x), int(y)), int(radius),
-                       (0, 255, 255), 2)
-            cv2.circle(frame, center, 5, (0, 0, 255), -1)
-
+            try:
+                M = cv2.moments(c)
+                center = (int(M["m10"] / M["m00"]), int(M["m01"] / M["m00"]))
+                # draw the circle and centroid on the frame,
+                # then update the list of tracked points
+                cv2.circle(frame, (int(x), int(y)), int(radius),
+                           (0, 255, 255), 2)
+                cv2.circle(frame, center, 5, (0, 0, 255), -1)
+            except Exception as e:
+                print(e)
     # update the points queue
     pts.appendleft(center)
 
