@@ -1,3 +1,4 @@
+import random
 from collections import deque
 from imutils.video import VideoStream
 import numpy as np
@@ -17,8 +18,14 @@ args = vars(ap.parse_args())
 # define the lower and upper boundaries of the "green"
 # ball in the HSV color space, then initialize the
 # list of tracked points
-redLower = (170, 70, 50)
+redLower = (165, 70, 30)
 redUpper = (180, 255, 255)
+
+redLower2 = (0, 70, 30)
+redUpper2 = (5, 255, 255)
+
+# redLower = (160, 70, 50)
+# redUpper = (180, 255, 255)
 pts = deque(maxlen=args["buffer"])
 
 # if a video path was not supplied, grab the reference
@@ -32,6 +39,9 @@ else:
 
 # allow the camera or video file to warm up
 time.sleep(2.0)
+
+background_buffer = []
+background = None
 
 # keep looping
 while True:
@@ -48,10 +58,13 @@ while True:
 
     # resize the frame, blur it, and convert it to the HSV
     # color space
-    frame = imutils.resize(frame, width=600)
+    frameO = imutils.resize(frame, width=600)
+
+    frame = frameO.copy()
     blurred = cv2.GaussianBlur(frame, (11, 11), 0)
-    gray = cv2.cvtColor(blurred, cv2.COLOR_BGR2GRAY)
+    grayO = cv2.cvtColor(blurred, cv2.COLOR_BGR2GRAY)
     hsv = cv2.cvtColor(blurred, cv2.COLOR_BGR2HSV)
+    # print(np.max(hsv[:, :, 0]), np.min(hsv[:, :, 0]))
 
     # construct a mask for the color "green", then perform
     # a series of dilations and erosions to remove any small
@@ -59,24 +72,56 @@ while True:
     mask = cv2.inRange(hsv, redLower, redUpper)
     mask = cv2.erode(mask, None, iterations=2)
     mask = cv2.dilate(mask, None, iterations=2)
+
+    mask2 = cv2.inRange(hsv, redLower2, redUpper2)
+    mask2 = cv2.erode(mask2, None, iterations=2)
+    mask2 = cv2.dilate(mask2, None, iterations=2)
+
+    final_mask = (mask.copy() | mask2.copy())
+
     kernelOpen = np.ones((5, 5))
     kernelClose = np.ones((20, 20))
 
     maskOpen = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernelOpen)
     maskClose = cv2.morphologyEx(maskOpen, cv2.MORPH_CLOSE, kernelClose)
-    sobelx = cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize=5)
-    sobely = cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize=5)
+    # sobelx = cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize=5)
+    # sobely = cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize=5)
 
-    print(gray.shape)
-    edges = cv2.Canny(gray, 5, 20)
+    # print(gray.shape)
+    n = 7
+    # grayO = gray.copy()
+    gray = grayO.copy()
+    gray = (gray + (final_mask / 255.0) * n * gray) / (n + 1)
+    gray = np.uint8(gray)
 
+    # edges = cv2.Canny(grayO, 5, 20)
+    edges2 = cv2.Canny(gray, 5, 20)
 
+    if not (background is None):
+        frame1 = np.abs(grayO - background)
+        frame1 = cv2.inRange(frame1, 100, 255)
+        cv2.imshow("b", edges2 & frame1)
+    else:
+        print(np.sum(edges2 / 255.0))
+        canny_not_found = np.sum(edges2 / 255.0) < 20
+        if canny_not_found:
+            print("canny_not_found")
+            background_buffer.append(grayO.copy())
+            if len(background_buffer) == 10:
+                # temp = background_buffer[0].copy()
+                # for b in background_buffer[1:]:
+                #     temp += b.copy()
+                #
+                # print(temp.shape)
+                # background = temp / len(background_buffer)*1.0
+                background = random.choice(background_buffer)
 
-    final_sobel = (sobelx+sobely)
+    # final_sobel = (sobelx+sobely)
     # final_sobel = (np.abs(sobelx)+np.abs(sobely))/2
 
-    cv2.imshow("dd",edges)
-    cv2.waitKey()
+    cv2.imshow("dd", imutils.resize(np.vstack([mask, mask2, final_mask]), height=700))
+    cv2.imshow("dddd", edges2)
+    time.sleep(0.001)
     # find contours in the mask and initialize the current
     # (x, y) center of the ball
     cnts = cv2.findContours(maskClose.copy(), cv2.RETR_EXTERNAL,
