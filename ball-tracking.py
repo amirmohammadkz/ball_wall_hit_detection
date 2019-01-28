@@ -1,7 +1,9 @@
+import itertools
 import math
 import random
 from collections import deque
 from imutils.video import VideoStream
+import matplotlib.pyplot as plt
 import numpy as np
 import argparse
 import cv2
@@ -19,12 +21,30 @@ def calculate_dif(p1, p2):
     return p2[0] - p1[0], p2[1] - p1[1]
 
 
+def calculate_size(p1):
+    return calculate_distance((0, 0), p1)
+
+
 def calculate_distance(p1, p2):
     if p1 is None or p2 is None:
         return None
 
     dif = calculate_dif(p1, p2)
     return math.sqrt(dif[0] ** 2 + dif[1] ** 2)
+
+
+def normal_dif(p1, p2):
+    if p1 is None or p2 is None:
+        return None
+
+    return calculate_dif(p1, p2)[0] / calculate_distance(p1, p2), calculate_dif(p1, p2)[1] / calculate_distance(p1, p2)
+
+
+def calculate_mean(queue):
+    not_now_queue = list(itertools.islice(queue, 1, len(queue)))
+    not_now_queue = [i for i in not_now_queue if i is not None]
+    return [sum(y) / len(y) for y in zip(*not_now_queue)]
+    # return mean([i for i in not_now_queue if i is not None]) / (len([i for i in not_now_queue if i is not None]))
 
 
 def best_fit_slope_and_intercept(pts):
@@ -65,6 +85,8 @@ frame_buffer = deque(maxlen=2)
 buffer_size = 10
 pts = deque(maxlen=buffer_size)
 v = deque(maxlen=buffer_size)
+a = deque(maxlen=buffer_size)
+a_dif = deque(maxlen=buffer_size)
 dist = deque(maxlen=buffer_size)
 
 # if a video path was not supplied, grab the reference
@@ -83,7 +105,16 @@ background_buffer = []
 background = None
 
 collision_found = False
+found_counter = 0
 collision_location = None
+collision_locations = []
+
+counter = 0
+
+fig = plt.figure()
+
+# canvas = np.zeros((480,640))
+# screen = pf.screen(canvas, 'Sinusoid')
 
 # keep looping
 while True:
@@ -183,7 +214,7 @@ while True:
     # cv2.imshow("close and close1", imutils.resize(np.vstack([maskClose1, maskClose]), height=700))
     # cv2.imshow("after open_close", maskClose1)
     # time.sleep(0.001)
-    # cv2.waitKey()
+    cv2.waitKey()
     # find contours in the mask and initialize the current
     # (x, y) center of the ball
 
@@ -247,24 +278,44 @@ while True:
 
     if len(pts) > 1:
         # print("(p2: %s, p1: %s)" % (str(pts[0]), str(pts[1])))
-        dif = calculate_dif(pts[1], pts[0])
+        dif = normal_dif(pts[1], pts[0])
         v.appendleft(dif)
 
         dist.appendleft(calculate_distance(pts[1], pts[0]))
-
+    if len(v) > 1:
+        dif = calculate_dif(v[1], v[0])
+        a.appendleft(dif)
+    if len(a) > 1:
+        dif = calculate_dif(a[1], a[0])
+        a_dif.appendleft(dif)
     if len(pts) > 1 and all([(pts[i] is not None) for i in range(len(pts))]):
         print(best_fit_slope_and_intercept(pts))
 
     print("----")
 
-    # if len(v) >= 1 and len(a) >= 1:
-    #     print("(v: %s, a: %s)" % (str(v[0]), str(a[0])))
+    if len(v) >= 1 and len(a) >= 1 and len(a_dif) >= 1:
+        print("(v: %s, a: %s, a_dif: %s)" % (str(v[0]), str(a[0]), str(a_dif[0])))
+    a_mean = []
+    a_dif_mean = []
+    if len(a_dif) >= 2:
+        if a_dif[0] is None and a_dif[1] is None:
+            a_dif.clear()
+        a_dif_mean = calculate_mean(a_dif)
+        print("a_dif mean = %s" % a_dif_mean)
+
+    if len(a) >= 2:
+        if a[0] is None and a[1] is None:
+            a.clear()
+        a_mean = calculate_mean(a)
+        print("a mean = %s" % a_mean)
     # cv2.arrowedLine(plot, pts[0], pts[0]+v[0], (0, 0, 255))
 
     cv2.imshow("line", plot)
 
     if collision_found and collision_location:
-        cv2.circle(frame, collision_location, 5, (255, 0, 0))
+        cv2.circle(frame, collision_location, 5, (0, 255, 0))
+        for collision in collision_locations:
+            cv2.circle(frame, collision, 5, (0, 255, 0))
 
     # if not collision_found and len(dist) >= 2:
     #     print("checking distance")
@@ -275,18 +326,58 @@ while True:
     #         collision_location = pts[1]
     #         cv2.circle(frame, pts[1], 20, (255, 0, 0))
 
-    if not collision_found and len(v) >= 2:
-        print("checking distance")
-        d1, d2 = v[0], v[1]
-        if d1 and d2 and (d1[0] * d2[0]) < 0:
-            print("col found")
+    # if not collision_found and len(v) >= 2:
+    #     print("checking distance")
+    #     d1, d2 = v[0], v[1]
+    #     if d1 and d2 and (d1[0] * d2[0]) < 0:
+    #         print("col found")
+    #         collision_found = True
+    #         collision_location = pts[1]
+    #         cv2.circle(frame, pts[1], 20, (255, 0, 0))
+
+    # if collision_found:
+    #     found_counter += 1
+    #     if found_counter == 2:
+
+    # if len(a_mean) > 0:
+    #     d1, d2 = a[0], a_mean
+    #     if d1 and d2:
+    #         print("difference:%s" % (d1[0] - d2[0]))
+    # if not collision_found and len(a_mean) > 0:
+    #     d1, d2 = a[0], a_mean
+    #     if d1 and d2 and (d1[0] * d2[0]) < 0 and len(a) > 3:
+    #         # collision_found = True
+    #         collision_location = pts[0]
+    #         collision_locations.append(pts[0])
+    #         cv2.circle(frame, pts[0], 20, (0, 255, 0))
+
+    if not collision_found and len(a_dif_mean) > 0:
+        d1, d2 = a_dif[0], a_dif_mean
+        if d1 and d2 and (calculate_size(d1) / calculate_size(d2) >= 3) < 0 and len(a_dif) > 3:
             collision_found = True
-            collision_location = pts[1]
-            cv2.circle(frame, pts[1], 20, (255, 0, 0))
+            collision_location = pts[0]
+            collision_locations.append(pts[0])
+            cv2.circle(frame, pts[0], 20, (0, 255, 0))
 
     if len(pts) >= 5 and all([(pts[i] is None) for i in range(5)]):
         print("col removed")
         collision_found = False
+        collision_locations = []
+
+    if (counter + 1) % 10 == 0 and len(a_dif) > 110:
+        plt.cla()
+        a_dif_ds = [a_dif[i] if a_dif[i] else (None, None) for i in range(len(a_dif) - 100)]
+        print(len(a_dif))
+        x, y = zip(*a_dif_ds)
+        t = np.array(list(range(len(a_dif) - 100)))
+        plt.subplot(2, 1, 1);
+        plt.cla()
+        plt.plot(t, x)
+        plt.subplot(2, 1, 2);
+        plt.cla()
+        plt.plot(t, y)
+        plt.draw()
+        plt.pause(0.01)
 
     # show the frame to our screen
     cv2.imshow("Frame", frame)
@@ -295,6 +386,8 @@ while True:
     # if the 'q' key is pressed, stop the loop
     if key == ord("q"):
         break
+
+    counter += 1
 
 # if we are not using a video file, stop the camera video stream
 if not args.get("video", False):
