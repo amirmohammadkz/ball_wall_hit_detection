@@ -1,3 +1,4 @@
+import math
 import random
 from collections import deque
 from imutils.video import VideoStream
@@ -6,6 +7,38 @@ import argparse
 import cv2
 import imutils
 import time
+
+from statistics import mean
+import numpy as np
+
+
+def calculate_dif(p1, p2):
+    if p1 is None or p2 is None:
+        return None
+
+    return p2[0] - p1[0], p2[1] - p1[1]
+
+
+def calculate_distance(p1, p2):
+    if p1 is None or p2 is None:
+        return None
+
+    dif = calculate_dif(p1, p2)
+    return math.sqrt(dif[0] ** 2 + dif[1] ** 2)
+
+
+def best_fit_slope_and_intercept(pts):
+    xs, ys = zip(*pts)
+    xs = np.array(xs, dtype=np.float64)
+    ys = np.array(ys, dtype=np.float64)
+
+    m = (((mean(xs) * mean(ys)) - mean(xs * ys)) /
+         ((mean(xs) * mean(xs)) - mean(xs * xs)))
+
+    b = mean(ys) - m * mean(xs)
+
+    return m, b
+
 
 # construct the argument parse and parse the arguments
 ap = argparse.ArgumentParser()
@@ -26,7 +59,13 @@ redUpper2 = (5, 255, 255)
 
 # redLower = (160, 70, 50)
 # redUpper = (180, 255, 255)
-pts = deque(maxlen=args["buffer"])
+
+frame_buffer = deque(maxlen=2)
+
+buffer_size = 10
+pts = deque(maxlen=buffer_size)
+v = deque(maxlen=buffer_size)
+dist = deque(maxlen=buffer_size)
 
 # if a video path was not supplied, grab the reference
 # to the webcam
@@ -42,6 +81,9 @@ time.sleep(2.0)
 
 background_buffer = []
 background = None
+
+collision_found = False
+collision_location = None
 
 # keep looping
 while True:
@@ -100,14 +142,14 @@ while True:
     if not (background is None):
         frame1 = np.abs(grayO - background)
         frame1 = cv2.inRange(frame1, 150, 255)
-        cv2.imshow("canny and background", imutils.resize(np.vstack([edges2, frame1]), height=700))
+        # cv2.imshow("canny and background", imutils.resize(np.vstack([edges2, frame1]), height=700))
         blurred_grayO = cv2.GaussianBlur(grayO, (11, 11), 0)
         blurred_background = cv2.GaussianBlur(background, (11, 11), 0)
         frame1 = np.abs(grayO - background)
         frame1 = cv2.inRange(frame1, 7, 245)
         edges2 = cv2.morphologyEx(edges2, cv2.MORPH_CLOSE, kernelClose)
-        cv2.imshow("canny and background with blur", imutils.resize(np.vstack([edges2, frame1]), height=700))
-        cv2.imshow("canny&background", edges2 & frame1)
+        # cv2.imshow("canny and background with blur", imutils.resize(np.vstack([edges2, frame1]), height=700))
+        # cv2.imshow("canny&background", edges2 & frame1)
         masked = edges2 & frame1
     else:
         print(np.sum(edges2 / 255.0))
@@ -128,20 +170,25 @@ while True:
     # final_sobel = (np.abs(sobelx)+np.abs(sobely))/2
 
     # cv2.imshow("dd", imutils.resize(np.vstack([mask, mask2, final_mask]), height=700))
-    cv2.imshow("canny only", edges2)
+    # cv2.imshow("canny only", edges2)
     kernelOpen = np.ones((1, 1))
     kernelClose = np.ones((1, 1))
 
     maskOpen = cv2.morphologyEx(masked, cv2.MORPH_OPEN, kernelOpen)
     maskClose = cv2.morphologyEx(maskOpen, cv2.MORPH_CLOSE, kernelClose)
     # cv2.imshow("open and close", imutils.resize(np.vstack([maskOpen1, maskClose1]), height=700))
-    cv2.imshow("open1 and close1", imutils.resize(np.vstack([maskOpen, maskClose]), height=700))
+    # cv2.imshow("open1 and close1", imutils.resize(np.vstack([maskOpen, maskClose]), height=700))
+    # ensure at least some circles were found
+
     # cv2.imshow("close and close1", imutils.resize(np.vstack([maskClose1, maskClose]), height=700))
     # cv2.imshow("after open_close", maskClose1)
     # time.sleep(0.001)
-    cv2.waitKey()
+    # cv2.waitKey()
     # find contours in the mask and initialize the current
     # (x, y) center of the ball
+
+    # cnts = cv2.findContours(maskClose.copy(), cv2.RETR_EXTERNAL,
+    #                         cv2.CHAIN_APPROX_SIMPLE)
     cnts = cv2.findContours(maskClose.copy(), cv2.RETR_EXTERNAL,
                             cv2.CHAIN_APPROX_SIMPLE)
     cnts = imutils.grab_contours(cnts)
@@ -156,7 +203,7 @@ while True:
         ((x, y), radius) = cv2.minEnclosingCircle(c)
 
         # only proceed if the radius meets a minimum size
-        if radius > 3:
+        if radius > 1:
             try:
                 M = cv2.moments(c)
                 center = (int(M["m10"] / M["m00"]), int(M["m01"] / M["m00"]))
@@ -167,9 +214,22 @@ while True:
                 cv2.circle(frame, center, 5, (0, 0, 255), -1)
             except Exception as e:
                 print(e)
+
+    # if circles is not None:
+    #     # convert the (x, y) coordinates and radius of the circles to integers
+    #     circles = np.round(circles[0, :]).astype("int")
+    #
+    #     # loop over the (x, y) coordinates and radius of the circles
+    #     for (x, y, r) in circles:
+    #         # draw the circle in the output image, then draw a rectangle
+    #         # corresponding to the center of the circle
+    #         cv2.circle(frame, (x, y), r, (0, 255, 0), 4)
+    #         cv2.rectangle(frame, (x - 5, y - 5), (x + 5, y + 5), (0, 128, 255), -1)
     # update the points queue
+
     pts.appendleft(center)
 
+    plot = np.zeros((frame.shape[0], frame.shape[1]))
     # loop over the set of tracked points
     for i in range(1, len(pts)):
         # if either of the tracked points are None, ignore
@@ -179,8 +239,54 @@ while True:
 
         # otherwise, compute the thickness of the line and
         # draw the connecting lines
-        thickness = int(np.sqrt(args["buffer"] / float(i + 1)) * 2.5)
-        cv2.line(frame, pts[i - 1], pts[i], (0, 0, 255), thickness)
+        # print(pts[i])
+        # thickness = int(np.sqrt(args["buffer"] / float(i + 1)) * 2.5)
+        # cv2.line(frame, pts[i - 1], pts[i], (0, 0, 255), thickness)
+        p = pts[i]
+        cv2.circle(plot, p, 1, (255, 255, 255), -1)
+
+    if len(pts) > 1:
+        # print("(p2: %s, p1: %s)" % (str(pts[0]), str(pts[1])))
+        dif = calculate_dif(pts[1], pts[0])
+        v.appendleft(dif)
+
+        dist.appendleft(calculate_distance(pts[1], pts[0]))
+
+    if len(pts) > 1 and all([(pts[i] is not None) for i in range(len(pts))]):
+        print(best_fit_slope_and_intercept(pts))
+
+    print("----")
+
+    # if len(v) >= 1 and len(a) >= 1:
+    #     print("(v: %s, a: %s)" % (str(v[0]), str(a[0])))
+    # cv2.arrowedLine(plot, pts[0], pts[0]+v[0], (0, 0, 255))
+
+    cv2.imshow("line", plot)
+
+    if collision_found and collision_location:
+        cv2.circle(frame, collision_location, 5, (255, 0, 0))
+
+    # if not collision_found and len(dist) >= 2:
+    #     print("checking distance")
+    #     d1, d2 = dist[0], dist[1]
+    #     if d1 and d2 and d1 > (d2 + 1.5):
+    #         print("col found")
+    #         collision_found = True
+    #         collision_location = pts[1]
+    #         cv2.circle(frame, pts[1], 20, (255, 0, 0))
+
+    if not collision_found and len(v) >= 2:
+        print("checking distance")
+        d1, d2 = v[0], v[1]
+        if d1 and d2 and (d1[0] * d2[0]) < 0:
+            print("col found")
+            collision_found = True
+            collision_location = pts[1]
+            cv2.circle(frame, pts[1], 20, (255, 0, 0))
+
+    if len(pts) >= 5 and all([(pts[i] is None) for i in range(5)]):
+        print("col removed")
+        collision_found = False
 
     # show the frame to our screen
     cv2.imshow("Frame", frame)
