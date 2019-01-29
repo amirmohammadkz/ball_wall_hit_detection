@@ -68,7 +68,7 @@ ap.add_argument("-b", "--buffer", type=int, default=64,
                 help="max buffer size")
 args = vars(ap.parse_args())
 
-# define the lower and upper boundaries of the "green"
+# define the lower and upper boundaries of the "ball_color"
 # ball in the HSV color space, then initialize the
 # list of tracked points
 redLower = (165, 70, 30)
@@ -339,26 +339,26 @@ while True:
     #     found_counter += 1
     #     if found_counter == 2:
 
-    # if len(a_mean) > 0:
-    #     d1, d2 = a[0], a_mean
-    #     if d1 and d2:
-    #         print("difference:%s" % (d1[0] - d2[0]))
-    # if not collision_found and len(a_mean) > 0:
-    #     d1, d2 = a[0], a_mean
-    #     if d1 and d2 and (d1[0] * d2[0]) < 0 and len(a) > 3:
-    #         # collision_found = True
-    #         collision_location = pts[0]
-    #         collision_locations.append(pts[0])
-    #         cv2.circle(frame, pts[0], 20, (0, 255, 0))
+    if len(a_mean) > 0:
+        d1, d2 = a[0], a_mean
+        if d1 and d2:
+            print("difference:%s" % (d1[0] - d2[0]))
+    if not collision_found and len(a_mean) > 0:
+        d1, d2 = a[0], a_mean
+        if d1 and d2 and (d1[0] * d2[0]) < 0 and len(a) > 3 and np.abs(d1[0] - d2[0]) > 0.15:
+            collision_found = True
+            collision_location = pts[0]
+            collision_locations.append(pts[0])
+            cv2.circle(frame, pts[0], 20, (0, 255, 0))
 
-    if not collision_found and len(a_dif_mean) > 0:
-        d1, d2 = a_dif[0], a_dif_mean
-        if d1 and d2 and len(a_dif) >= 10:
-            if calculate_size(d1) / calculate_size(d2) >= 5:
-                collision_found = True
-                collision_location = pts[0]
-                collision_locations.append(pts[0])
-                cv2.circle(frame, pts[0], 20, (0, 255, 0))
+    # if not collision_found and len(a_dif_mean) > 0:
+    #     d1, d2 = a_dif[0], a_dif_mean
+    #     if d1 and d2 and len(a_dif) >= 10:
+    #         if calculate_size(d1) / calculate_size(d2) >= 5:
+    #             collision_found = True
+    #             collision_location = pts[0]
+    #             collision_locations.append(pts[0])
+    #             cv2.circle(frame, pts[0], 20, (0, 255, 0))
 
     if len(a_dif_mean) > 0:
         d1, d2 = a_dif[0], a_dif_mean

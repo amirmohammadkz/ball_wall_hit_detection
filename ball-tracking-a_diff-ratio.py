@@ -13,33 +13,6 @@ import time
 from statistics import mean
 import numpy as np
 
-kalman = None
-c, r, w, h = None, None, None, None
-x0, y0 = None, None
-
-
-def initialize_kalman(cq=100, rq=100, wq=100, hq=100):
-    global kalman
-    c, r, w, h = cq, rq, wq, hq
-    # keep looping
-    # avvali window bara track ro misazim
-    state = np.array([c + w / 2, r + h / 2, 0, 0], dtype='float64')  # initial position
-
-    # bara cherayie estefade az in parameter ha az linke zir search shod:
-    # https://stackoverflow.com/a/17857618/5661543
-    kalman = cv2.KalmanFilter(4, 2, 0)
-    kalman.transitionMatrix = np.array([[1., 0., .1, 0.],
-                                        [0., 1., 0., .1],
-                                        [0., 0., 1., 0.],
-                                        [0., 0., 0., 1.]])
-    kalman.measurementMatrix = 1. * np.eye(2, 4)
-    kalman.processNoiseCov = 1e-5 * np.eye(4, 4)
-    kalman.measurementNoiseCov = 1e-3 * np.eye(2, 2)
-    kalman.errorCovPost = 10* np.eye(4, 4)
-    # kalman.errorCovPost = 1e-1 * np.eye(4, 4)
-    kalman.statePost = state
-    x0, y0, c, r = c, r, w, h
-
 
 def calculate_dif(p1, p2):
     if p1 is None or p2 is None:
@@ -74,6 +47,19 @@ def calculate_mean(queue):
     # return mean([i for i in not_now_queue if i is not None]) / (len([i for i in not_now_queue if i is not None]))
 
 
+def best_fit_slope_and_intercept(pts):
+    xs, ys = zip(*pts)
+    xs = np.array(xs, dtype=np.float64)
+    ys = np.array(ys, dtype=np.float64)
+
+    m = (((mean(xs) * mean(ys)) - mean(xs * ys)) /
+         ((mean(xs) * mean(xs)) - mean(xs * xs)))
+
+    b = mean(ys) - m * mean(xs)
+
+    return m, b
+
+
 # construct the argument parse and parse the arguments
 ap = argparse.ArgumentParser()
 ap.add_argument("-v", "--video",
@@ -82,7 +68,7 @@ ap.add_argument("-b", "--buffer", type=int, default=64,
                 help="max buffer size")
 args = vars(ap.parse_args())
 
-# define the lower and upper boundaries of the "green"
+# define the lower and upper boundaries of the "ball_color"
 # ball in the HSV color space, then initialize the
 # list of tracked points
 redLower = (165, 70, 30)
@@ -96,14 +82,12 @@ redUpper2 = (5, 255, 255)
 
 frame_buffer = deque(maxlen=2)
 
-buffer_size = 7
-delete_limit = 3
+buffer_size = 10
 pts = deque(maxlen=buffer_size)
 v = deque(maxlen=buffer_size)
 a = deque(maxlen=buffer_size)
 a_dif = deque(maxlen=buffer_size)
 dist = deque(maxlen=buffer_size)
-kalman_dist = deque(maxlen=buffer_size)
 
 # if a video path was not supplied, grab the reference
 # to the webcam
@@ -131,7 +115,8 @@ fig = plt.figure()
 
 # canvas = np.zeros((480,640))
 # screen = pf.screen(canvas, 'Sinusoid')
-initialize_kalman()
+
+# keep looping
 while True:
     # grab the current frame
     frame = vs.read()
@@ -198,7 +183,7 @@ while True:
         # cv2.imshow("canny&background", edges2 & frame1)
         masked = edges2 & frame1
     else:
-        # print(np.sum(edges2 / 255.0))
+        print(np.sum(edges2 / 255.0))
         canny_not_found = np.sum(edges2 / 255.0) < 20
         if canny_not_found:
             print("canny_not_found")
@@ -240,90 +225,26 @@ while True:
     cnts = imutils.grab_contours(cnts)
     center = None
 
-    # inja ba kalman ye pishbini anjam midim
-    prediction = kalman.predict()
-    x, y, w, h = 0, 0, 0, 0
     # only proceed if at least one contour was found
     if len(cnts) > 0:
         # find the largest contour in the mask, then use
         # it to compute the minimum enclosing circle and
         # centroid
-        c1 = max(cnts, key=cv2.contourArea)
-        ((x1, y1), radius) = cv2.minEnclosingCircle(c1)
+        c = max(cnts, key=cv2.contourArea)
+        ((x, y), radius) = cv2.minEnclosingCircle(c)
 
         # only proceed if the radius meets a minimum size
         if radius > 1:
             try:
-                M = cv2.moments(c1)
+                M = cv2.moments(c)
                 center = (int(M["m10"] / M["m00"]), int(M["m01"] / M["m00"]))
                 # draw the circle and centroid on the frame,
                 # then update the list of tracked points
-                cv2.circle(frame, (int(x1), int(y1)), int(radius),
+                cv2.circle(frame, (int(x), int(y)), int(radius),
                            (0, 255, 255), 2)
-                cv2.circle(frame, center, 2, (0, 0, 255), -1)
-                x, y, w, h = center[0], center[1], radius, radius
-                x0, y0, c, r = center[0], center[1], radius, radius
+                cv2.circle(frame, center, 5, (0, 0, 255), -1)
             except Exception as e:
                 print(e)
-
-    measurement = np.array([x + w / 2, y + h / 2], dtype='float64')
-    cv2.circle(frame, (int(prediction[0]), int(prediction[1])), 1,
-               (255, 0, 255), 2)
-    kalman_dist.appendleft(calculate_distance((prediction[0], prediction[1]), (x, y)))
-    print("predict - real: " + str(kalman_dist[0]))
-
-    if not (x == 0 and y == 0 and w == 0 and h == 0):
-        # ba kalman correct mikonim measurehasho ba panjare measurementi ke sakhtim az chize jadid
-        print("kalman correct:")
-        x, y, w, h = kalman.correct(measurement)
-        cv2.circle(frame, (int(x), int(y)), 1,
-                   (0, 255, 0), 2)
-    else:
-        print("kalman old predict:")
-        print("x: %s, y: %s, w: %s, h: %s" % (x, y, w, h))
-        # age chize khoobi nayaftimam hamoon predictione kalman ro midim behesh
-        x, y, w, h = prediction
-    # cv2.rectangle(frame, (int(x - c / 2), int(y - r / 2)), (int(x + c / 2), int(y + r / 2)),
-    #               (0, 255, 0), 2)
-    if collision_found and collision_location:
-        cv2.circle(frame, collision_location, 5, (0, 255, 0))
-
-    pts.appendleft(center)
-
-    if len(kalman_dist) >= 4:
-        if kalman_dist[1] < kalman_dist[2] < kalman_dist[3] and kalman_dist[0] > kalman_dist[1] and not collision_found:
-            collision_found = True
-            collision_location = pts[0]
-            print("it must be 0: " + str(calculate_distance(collision_location, pts[0])))
-            cv2.circle(frame, pts[0], 5, (0, 255, 0))
-
-    if len(pts) > delete_limit and all([(pts[i] is None) for i in range(1, delete_limit + 1)]) and not (pts[0] is None):
-        c, r, w, h = x0, y0, c, r
-        # # keep looping
-        # # avvali window bara track ro misazim
-        # state = np.array([c + w / 2, r + h / 2, 0, 0], dtype='float64')  # initial position
-        #
-        # # bara cherayie estefade az in parameter ha az linke zir search shod:
-        # # https://stackoverflow.com/a/17857618/5661543
-        # kalman = cv2.KalmanFilter(4, 2, 0)
-        # kalman.transitionMatrix = np.array([[1., 0., .1, 0.],
-        #                                     [0., 1., 0., .1],
-        #                                     [0., 0., 1., 0.],
-        #                                     [0., 0., 0., 1.]])
-        # kalman.measurementMatrix = 1. * np.eye(2, 4)
-        # kalman.processNoiseCov = 1e-5 * np.eye(4, 4)
-        # kalman.measurementNoiseCov = 1e-3 * np.eye(2, 2)
-        # kalman.errorCovPost = 1e-1 * np.eye(4, 4)
-        # kalman.statePost = state
-        # x0, y0, c, r = c, r, w, h
-        initialize_kalman(c, r, w, h)
-
-        print("lolllll")
-
-    if len(pts) >= delete_limit and all([(pts[i] is None) for i in range(delete_limit)]):
-        print("col removed")
-        collision_found = False
-        collision_locations = []
 
     # if circles is not None:
     #     # convert the (x, y) coordinates and radius of the circles to integers
@@ -336,6 +257,8 @@ while True:
     #         cv2.circle(frame, (x, y), r, (0, 255, 0), 4)
     #         cv2.rectangle(frame, (x - 5, y - 5), (x + 5, y + 5), (0, 128, 255), -1)
     # update the points queue
+
+    pts.appendleft(center)
 
     plot = np.zeros((frame.shape[0], frame.shape[1]))
     # loop over the set of tracked points
@@ -352,6 +275,116 @@ while True:
         # cv2.line(frame, pts[i - 1], pts[i], (0, 0, 255), thickness)
         p = pts[i]
         cv2.circle(plot, p, 1, (255, 255, 255), -1)
+
+    if len(pts) > 1:
+        # print("(p2: %s, p1: %s)" % (str(pts[0]), str(pts[1])))
+        dif = normal_dif(pts[1], pts[0])
+        v.appendleft(dif)
+
+        dist.appendleft(calculate_distance(pts[1], pts[0]))
+    if len(v) > 1:
+        dif = calculate_dif(v[1], v[0])
+        a.appendleft(dif)
+    if len(a) > 1:
+        dif = calculate_dif(a[1], a[0])
+        a_dif.appendleft(dif)
+    if len(pts) > 1 and all([(pts[i] is not None) for i in range(len(pts))]):
+        print(best_fit_slope_and_intercept(pts))
+
+    print("----")
+
+    if len(v) >= 1 and len(a) >= 1 and len(a_dif) >= 1:
+        print("(v: %s, a: %s, a_dif: %s)" % (str(v[0]), str(a[0]), str(a_dif[0])))
+    a_mean = []
+    a_dif_mean = []
+    if len(a_dif) >= 2:
+        if a_dif[0] is None and a_dif[1] is None:
+            a_dif.clear()
+        a_dif_mean = calculate_mean(a_dif)
+        print("a_dif mean = %s" % a_dif_mean)
+
+    if len(a) >= 2:
+        if a[0] is None and a[1] is None:
+            a.clear()
+        a_mean = calculate_mean(a)
+        print("a mean = %s" % a_mean)
+    # cv2.arrowedLine(plot, pts[0], pts[0]+v[0], (0, 0, 255))
+
+    cv2.imshow("line", plot)
+
+    if collision_found and collision_location:
+        cv2.circle(frame, collision_location, 5, (0, 255, 0))
+        for collision in collision_locations:
+            cv2.circle(frame, collision, 5, (0, 255, 0))
+
+    # if not collision_found and len(dist) >= 2:
+    #     print("checking distance")
+    #     d1, d2 = dist[0], dist[1]
+    #     if d1 and d2 and d1 > (d2 + 1.5):
+    #         print("col found")
+    #         collision_found = True
+    #         collision_location = pts[1]
+    #         cv2.circle(frame, pts[1], 20, (255, 0, 0))
+
+    # if not collision_found and len(v) >= 2:
+    #     print("checking distance")
+    #     d1, d2 = v[0], v[1]
+    #     if d1 and d2 and (d1[0] * d2[0]) < 0:
+    #         print("col found")
+    #         collision_found = True
+    #         collision_location = pts[1]
+    #         cv2.circle(frame, pts[1], 20, (255, 0, 0))
+
+    # if collision_found:
+    #     found_counter += 1
+    #     if found_counter == 2:
+
+    # if len(a_mean) > 0:
+    #     d1, d2 = a[0], a_mean
+    #     if d1 and d2:
+    #         print("difference:%s" % (d1[0] - d2[0]))
+    # if not collision_found and len(a_mean) > 0:
+    #     d1, d2 = a[0], a_mean
+    #     if d1 and d2 and (d1[0] * d2[0]) < 0 and len(a) > 3:
+    #         # collision_found = True
+    #         collision_location = pts[0]
+    #         collision_locations.append(pts[0])
+    #         cv2.circle(frame, pts[0], 20, (0, 255, 0))
+
+    if not collision_found and len(a_dif_mean) > 0:
+        d1, d2 = a_dif[0], a_dif_mean
+        if d1 and d2 and len(a_dif) >= 10:
+            if calculate_size(d1) / calculate_size(d2) >= 5:
+                collision_found = True
+                collision_location = pts[0]
+                collision_locations.append(pts[0])
+                cv2.circle(frame, pts[0], 20, (0, 255, 0))
+
+    if len(a_dif_mean) > 0:
+        d1, d2 = a_dif[0], a_dif_mean
+        if d1 and d2 and len(a_dif) > 3:
+            print("(a_dif: %s, a_dif_mean: %s, ratio: %s)" % (
+                str(calculate_size(d1)), str(calculate_size(d2)), str(calculate_size(d1) / calculate_size(d2))))
+
+    if len(pts) >= 5 and all([(pts[i] is None) for i in range(5)]):
+        print("col removed")
+        collision_found = False
+        collision_locations = []
+
+    if (counter + 1) % 10 == 0 and len(a_dif) > 110:
+        plt.cla()
+        a_dif_ds = [a_dif[i] if a_dif[i] else (None, None) for i in range(len(a_dif) - 100)]
+        print(len(a_dif))
+        x, y = zip(*a_dif_ds)
+        t = np.array(list(range(len(a_dif) - 100)))
+        plt.subplot(2, 1, 1);
+        plt.cla()
+        plt.plot(t, x)
+        plt.subplot(2, 1, 2);
+        plt.cla()
+        plt.plot(t, y)
+        plt.draw()
+        plt.pause(0.01)
 
     # show the frame to our screen
     cv2.imshow("Frame", frame)
