@@ -13,6 +13,40 @@ import time
 from statistics import mean
 import numpy as np
 
+
+def calculate_dif(p1, p2):
+    if p1 is None or p2 is None:
+        return None
+
+    return p2[0] - p1[0], p2[1] - p1[1]
+
+
+def calculate_size(p1):
+    return max(calculate_distance((0, 0), p1), 0.0001)
+
+
+def calculate_distance(p1, p2):
+    if p1 is None or p2 is None:
+        return None
+
+    dif = calculate_dif(p1, p2)
+    return max(math.sqrt(dif[0] ** 2 + dif[1] ** 2), 0.0001)
+
+
+def normal_dif(p1, p2):
+    if p1 is None or p2 is None:
+        return None
+
+    return calculate_dif(p1, p2)[0] / calculate_distance(p1, p2), calculate_dif(p1, p2)[1] / calculate_distance(p1, p2)
+
+
+def calculate_mean(queue):
+    not_now_queue = list(itertools.islice(queue, 1, len(queue)))
+    not_now_queue = [i for i in not_now_queue if i is not None]
+    return [sum(y) / len(y) for y in zip(*not_now_queue)]
+    # return mean([i for i in not_now_queue if i is not None]) / (len([i for i in not_now_queue if i is not None]))
+
+
 # construct the argument parse and parse the arguments
 ap = argparse.ArgumentParser()
 ap.add_argument("-v", "--video",
@@ -35,12 +69,14 @@ redUpper2 = (5, 255, 255)
 
 frame_buffer = deque(maxlen=2)
 
-buffer_size = 10
+buffer_size = 7
+delete_limit = 3
 pts = deque(maxlen=buffer_size)
 v = deque(maxlen=buffer_size)
 a = deque(maxlen=buffer_size)
 a_dif = deque(maxlen=buffer_size)
 dist = deque(maxlen=buffer_size)
+kalman_dist = deque(maxlen=buffer_size)
 
 # if a video path was not supplied, grab the reference
 # to the webcam
@@ -208,8 +244,6 @@ while True:
 
         # only proceed if the radius meets a minimum size
         if radius > 1:
-            x, y, w, h = x1, y1, radius, radius
-            x0, y0, c, r = x1, y1, radius, radius
             try:
                 M = cv2.moments(c1)
                 center = (int(M["m10"] / M["m00"]), int(M["m01"] / M["m00"]))
@@ -218,12 +252,17 @@ while True:
                 cv2.circle(frame, (int(x1), int(y1)), int(radius),
                            (0, 255, 255), 2)
                 cv2.circle(frame, center, 2, (0, 0, 255), -1)
+                x, y, w, h = center[0], center[1], radius, radius
+                x0, y0, c, r = center[0], center[1], radius, radius
             except Exception as e:
                 print(e)
 
     measurement = np.array([x + w / 2, y + h / 2], dtype='float64')
     cv2.circle(frame, (int(prediction[0]), int(prediction[1])), 1,
                (255, 0, 255), 2)
+    kalman_dist.appendleft(calculate_distance((prediction[0], prediction[1]), (x, y)))
+    print("predict - real: " + str(kalman_dist[0]))
+
     if not (x == 0 and y == 0 and w == 0 and h == 0):
         # ba kalman correct mikonim measurehasho ba panjare measurementi ke sakhtim az chize jadid
         print("kalman correct:")
@@ -237,9 +276,19 @@ while True:
         x, y, w, h = prediction
     # cv2.rectangle(frame, (int(x - c / 2), int(y - r / 2)), (int(x + c / 2), int(y + r / 2)),
     #               (0, 255, 0), 2)
+    if collision_found and collision_location:
+        cv2.circle(frame, collision_location, 5, (0, 255, 0))
 
+    pts.appendleft(center)
 
-    if len(pts) > 5 and all([(pts[i] is None) for i in range(1, 6)]) and not (pts[0] is None):
+    if len(kalman_dist) >= 4:
+        if kalman_dist[1] < kalman_dist[2] < kalman_dist[3] and kalman_dist[0] > kalman_dist[1] and not collision_found:
+            collision_found = True
+            collision_location = (int(x), int(y))
+            print("it must be 0: " + str(calculate_distance(collision_location, pts[0])))
+            cv2.circle(frame, pts[0], 5, (0, 255, 0))
+
+    if len(pts) > delete_limit and all([(pts[i] is None) for i in range(1, delete_limit + 1)]) and not (pts[0] is None):
         c, r, w, h = x0, y0, c, r
         # keep looping
         # avvali window bara track ro misazim
@@ -261,6 +310,11 @@ while True:
 
         print("lolllll")
 
+    if len(pts) >= delete_limit and all([(pts[i] is None) for i in range(delete_limit)]):
+        print("col removed")
+        collision_found = False
+        collision_locations = []
+
     # if circles is not None:
     #     # convert the (x, y) coordinates and radius of the circles to integers
     #     circles = np.round(circles[0, :]).astype("int")
@@ -272,8 +326,6 @@ while True:
     #         cv2.circle(frame, (x, y), r, (0, 255, 0), 4)
     #         cv2.rectangle(frame, (x - 5, y - 5), (x + 5, y + 5), (0, 128, 255), -1)
     # update the points queue
-
-    pts.appendleft(center)
 
     plot = np.zeros((frame.shape[0], frame.shape[1]))
     # loop over the set of tracked points
