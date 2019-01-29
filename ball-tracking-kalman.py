@@ -184,7 +184,7 @@ while True:
     # cv2.imshow("close and close1", imutils.resize(np.vstack([maskClose1, maskClose]), height=700))
     # cv2.imshow("after open_close", maskClose1)
     # time.sleep(0.001)
-    # cv2.waitKey()
+    cv2.waitKey()
     # find contours in the mask and initialize the current
     # (x, y) center of the ball
 
@@ -217,22 +217,27 @@ while True:
                 # then update the list of tracked points
                 cv2.circle(frame, (int(x1), int(y1)), int(radius),
                            (0, 255, 255), 2)
-                cv2.circle(frame, center, 5, (0, 0, 255), -1)
+                cv2.circle(frame, center, 2, (0, 0, 255), -1)
             except Exception as e:
                 print(e)
 
     measurement = np.array([x + w / 2, y + h / 2], dtype='float64')
+    cv2.circle(frame, (int(prediction[0]), int(prediction[1])), 1,
+               (255, 0, 255), 2)
     if not (x == 0 and y == 0 and w == 0 and h == 0):
         # ba kalman correct mikonim measurehasho ba panjare measurementi ke sakhtim az chize jadid
         print("kalman correct:")
         x, y, w, h = kalman.correct(measurement)
+        cv2.circle(frame, (int(x), int(y)), 1,
+                   (0, 255, 0), 2)
     else:
         print("kalman old predict:")
         print("x: %s, y: %s, w: %s, h: %s" % (x, y, w, h))
         # age chize khoobi nayaftimam hamoon predictione kalman ro midim behesh
         x, y, w, h = prediction
-    cv2.rectangle(frame, (int(x - c / 2 + 5), int(y - r / 2 + 5)), (int(x + c / 2 - 5), int(y + r / 2 - 5)),
-                  (0, 255, 0), 2)
+    # cv2.rectangle(frame, (int(x - c / 2), int(y - r / 2)), (int(x + c / 2), int(y + r / 2)),
+    #               (0, 255, 0), 2)
+
 
     if len(pts) > 5 and all([(pts[i] is None) for i in range(1, 6)]) and not (pts[0] is None):
         c, r, w, h = x0, y0, c, r
