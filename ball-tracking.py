@@ -22,7 +22,7 @@ def calculate_dif(p1, p2):
 
 
 def calculate_size(p1):
-    return calculate_distance((0, 0), p1)
+    return max(calculate_distance((0, 0), p1), 0.0001)
 
 
 def calculate_distance(p1, p2):
@@ -30,7 +30,7 @@ def calculate_distance(p1, p2):
         return None
 
     dif = calculate_dif(p1, p2)
-    return math.sqrt(dif[0] ** 2 + dif[1] ** 2)
+    return max(math.sqrt(dif[0] ** 2 + dif[1] ** 2), 0.0001)
 
 
 def normal_dif(p1, p2):
@@ -353,11 +353,18 @@ while True:
 
     if not collision_found and len(a_dif_mean) > 0:
         d1, d2 = a_dif[0], a_dif_mean
-        if d1 and d2 and (calculate_size(d1) / calculate_size(d2) >= 3) < 0 and len(a_dif) > 3:
-            collision_found = True
-            collision_location = pts[0]
-            collision_locations.append(pts[0])
-            cv2.circle(frame, pts[0], 20, (0, 255, 0))
+        if d1 and d2 and len(a_dif) >= 10:
+            if calculate_size(d1) / calculate_size(d2) >= 5:
+                collision_found = True
+                collision_location = pts[0]
+                collision_locations.append(pts[0])
+                cv2.circle(frame, pts[0], 20, (0, 255, 0))
+
+    if len(a_dif_mean) > 0:
+        d1, d2 = a_dif[0], a_dif_mean
+        if d1 and d2 and len(a_dif) > 3:
+            print("(a_dif: %s, a_dif_mean: %s, ratio: %s)" % (
+                str(calculate_size(d1)), str(calculate_size(d2)), str(calculate_size(d1) / calculate_size(d2))))
 
     if len(pts) >= 5 and all([(pts[i] is None) for i in range(5)]):
         print("col removed")
