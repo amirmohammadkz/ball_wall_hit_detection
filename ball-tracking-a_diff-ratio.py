@@ -3,7 +3,7 @@ import math
 import random
 from collections import deque
 from imutils.video import VideoStream
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 import numpy as np
 import argparse
 import cv2
@@ -107,11 +107,16 @@ background = None
 collision_found = False
 found_counter = 0
 collision_location = None
-collision_locations = []
+collision_locations = [None] * 4
+
+collision_by_dif = False
+collision_by_a_dif = False
+collision_by_v = False
+collision_by_a = False
 
 counter = 0
 
-fig = plt.figure()
+# fig = plt.figure()
 
 # canvas = np.zeros((480,640))
 # screen = pf.screen(canvas, 'Sinusoid')
@@ -214,7 +219,7 @@ while True:
     # cv2.imshow("close and close1", imutils.resize(np.vstack([maskClose1, maskClose]), height=700))
     # cv2.imshow("after open_close", maskClose1)
     # time.sleep(0.001)
-    cv2.waitKey()
+    # cv2.waitKey()
     # find contours in the mask and initialize the current
     # (x, y) center of the ball
 
@@ -312,53 +317,53 @@ while True:
 
     cv2.imshow("line", plot)
 
-    if collision_found and collision_location:
-        cv2.circle(frame, collision_location, 5, (0, 255, 0))
-        for collision in collision_locations:
-            cv2.circle(frame, collision, 5, (0, 255, 0))
+    if not collision_found and len(dist) >= 2:
+        print("checking distance")
+        d1, d2 = dist[0], dist[1]
+        if d1 and d2 and d1 > (d2 + 1.5):
+            print("col found")
+            collision_by_dif = True
+            # collision_location = pts[1]
+            collision_locations[0] = (pts[1])
+            # cv2.circle(frame, pts[1], 20, (255, 0, 0))
 
-    # if not collision_found and len(dist) >= 2:
-    #     print("checking distance")
-    #     d1, d2 = dist[0], dist[1]
-    #     if d1 and d2 and d1 > (d2 + 1.5):
-    #         print("col found")
-    #         collision_found = True
-    #         collision_location = pts[1]
-    #         cv2.circle(frame, pts[1], 20, (255, 0, 0))
-
-    # if not collision_found and len(v) >= 2:
-    #     print("checking distance")
-    #     d1, d2 = v[0], v[1]
-    #     if d1 and d2 and (d1[0] * d2[0]) < 0:
-    #         print("col found")
-    #         collision_found = True
-    #         collision_location = pts[1]
-    #         cv2.circle(frame, pts[1], 20, (255, 0, 0))
+    if not collision_found and len(v) >= 2:
+        print("checking distance")
+        d1, d2 = v[0], v[1]
+        if d1 and d2 and (d1[0] * d2[0]) < 0:
+            print("col found")
+            collision_by_v = True
+            # collision_location = pts[1]
+            collision_locations[1] = (pts[1])
+            # cv2.circle(frame, pts[1], 20, (255, 0, 0))
 
     # if collision_found:
     #     found_counter += 1
     #     if found_counter == 2:
 
-    # if len(a_mean) > 0:
-    #     d1, d2 = a[0], a_mean
-    #     if d1 and d2:
-    #         print("difference:%s" % (d1[0] - d2[0]))
-    # if not collision_found and len(a_mean) > 0:
-    #     d1, d2 = a[0], a_mean
-    #     if d1 and d2 and (d1[0] * d2[0]) < 0 and len(a) > 3:
-    #         # collision_found = True
-    #         collision_location = pts[0]
-    #         collision_locations.append(pts[0])
-    #         cv2.circle(frame, pts[0], 20, (0, 255, 0))
+    if len(a_mean) > 0:
+        d1, d2 = a[0], a_mean
+        if d1 and d2:
+            print("difference:%s" % (d1[0] - d2[0]))
+    if not collision_found and len(a_mean) > 0:
+        d1, d2 = a[0], a_mean
+        if d1 and d2 and (d1[0] * d2[0]) < 0 and len(a) > 3:
+            # collision_found = True
+            collision_by_a = True
+            # collision_location = pts[0]
+            collision_locations[2] = (pts[1])
+            # collision_locations.append(pts[0])
+            # cv2.circle(frame, pts[0], 20, (0, 255, 0))
 
     if not collision_found and len(a_dif_mean) > 0:
         d1, d2 = a_dif[0], a_dif_mean
         if d1 and d2 and len(a_dif) >= 10:
             if calculate_size(d1) / calculate_size(d2) >= 5:
-                collision_found = True
-                collision_location = pts[0]
-                collision_locations.append(pts[0])
-                cv2.circle(frame, pts[0], 20, (0, 255, 0))
+                collision_by_a_dif = True
+                # collision_location = pts[0]
+                collision_locations[3] = (pts[1])
+                # collision_locations.append(pts[0])
+                # cv2.circle(frame, pts[0], 20, (0, 255, 0))
 
     if len(a_dif_mean) > 0:
         d1, d2 = a_dif[0], a_dif_mean
@@ -366,25 +371,42 @@ while True:
             print("(a_dif: %s, a_dif_mean: %s, ratio: %s)" % (
                 str(calculate_size(d1)), str(calculate_size(d2)), str(calculate_size(d1) / calculate_size(d2))))
 
+    num_of_votes = len([0 for vote in [collision_by_dif, collision_by_v, collision_by_a_dif] if vote])
+    print("num_of_votes:", num_of_votes)
+    if num_of_votes >= 2:
+        collision_found = True
+
     if len(pts) >= 5 and all([(pts[i] is None) for i in range(5)]):
         print("col removed")
         collision_found = False
-        collision_locations = []
 
-    if (counter + 1) % 10 == 0 and len(a_dif) > 110:
-        plt.cla()
-        a_dif_ds = [a_dif[i] if a_dif[i] else (None, None) for i in range(len(a_dif) - 100)]
-        print(len(a_dif))
-        x, y = zip(*a_dif_ds)
-        t = np.array(list(range(len(a_dif) - 100)))
-        plt.subplot(2, 1, 1);
-        plt.cla()
-        plt.plot(t, x)
-        plt.subplot(2, 1, 2);
-        plt.cla()
-        plt.plot(t, y)
-        plt.draw()
-        plt.pause(0.01)
+        collision_by_dif = False
+        collision_by_v = False
+        collision_by_a = False
+        collision_by_a_dif = False
+
+        collision_locations = [None] * 4
+
+    if collision_found and collision_locations:
+        # cv2.circle(frame, collision_location, 5, (0, 255, 0))
+        for collision in collision_locations:
+            if collision:
+                cv2.circle(frame, collision, 5, (0, 255, 0))
+
+    # if (counter + 1) % 10 == 0 and len(a_dif) > 110:
+    #     plt.cla()
+    #     a_dif_ds = [a_dif[i] if a_dif[i] else (None, None) for i in range(len(a_dif) - 100)]
+    #     print(len(a_dif))
+    #     x, y = zip(*a_dif_ds)
+    #     t = np.array(list(range(len(a_dif) - 100)))
+    #     plt.subplot(2, 1, 1);
+    #     plt.cla()
+    #     plt.plot(t, x)
+    #     plt.subplot(2, 1, 2);
+    #     plt.cla()
+    #     plt.plot(t, y)
+    #     plt.draw()
+    #     plt.pause(0.01)
 
     # show the frame to our screen
     cv2.imshow("Frame", frame)

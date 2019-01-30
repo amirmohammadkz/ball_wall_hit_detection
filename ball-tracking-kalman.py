@@ -3,7 +3,7 @@ import math
 import random
 from collections import deque
 from imutils.video import VideoStream
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 import numpy as np
 import argparse
 import cv2
@@ -127,7 +127,7 @@ collision_locations = []
 
 counter = 0
 
-fig = plt.figure()
+# fig = plt.figure()
 
 # canvas = np.zeros((480,640))
 # screen = pf.screen(canvas, 'Sinusoid')
@@ -229,7 +229,7 @@ while True:
     # cv2.imshow("close and close1", imutils.resize(np.vstack([maskClose1, maskClose]), height=700))
     # cv2.imshow("after open_close", maskClose1)
     # time.sleep(0.001)
-    cv2.waitKey()
+    # cv2.waitKey()
     # find contours in the mask and initialize the current
     # (x, y) center of the ball
 

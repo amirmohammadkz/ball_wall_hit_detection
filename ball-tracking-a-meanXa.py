@@ -3,7 +3,7 @@ import math
 import random
 from collections import deque
 from imutils.video import VideoStream
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 import numpy as np
 import argparse
 import cv2
@@ -111,7 +111,7 @@ collision_locations = []
 
 counter = 0
 
-fig = plt.figure()
+# fig = plt.figure()
 
 # canvas = np.zeros((480,640))
 # screen = pf.screen(canvas, 'Sinusoid')
@@ -214,7 +214,7 @@ while True:
     # cv2.imshow("close and close1", imutils.resize(np.vstack([maskClose1, maskClose]), height=700))
     # cv2.imshow("after open_close", maskClose1)
     # time.sleep(0.001)
-    cv2.waitKey()
+    # cv2.waitKey()
     # find contours in the mask and initialize the current
     # (x, y) center of the ball
 
@@ -371,20 +371,20 @@ while True:
         collision_found = False
         collision_locations = []
 
-    if (counter + 1) % 10 == 0 and len(a_dif) > 110:
-        plt.cla()
-        a_dif_ds = [a_dif[i] if a_dif[i] else (None, None) for i in range(len(a_dif) - 100)]
-        print(len(a_dif))
-        x, y = zip(*a_dif_ds)
-        t = np.array(list(range(len(a_dif) - 100)))
-        plt.subplot(2, 1, 1);
-        plt.cla()
-        plt.plot(t, x)
-        plt.subplot(2, 1, 2);
-        plt.cla()
-        plt.plot(t, y)
-        plt.draw()
-        plt.pause(0.01)
+    # if (counter + 1) % 10 == 0 and len(a_dif) > 110:
+    #     plt.cla()
+    #     a_dif_ds = [a_dif[i] if a_dif[i] else (None, None) for i in range(len(a_dif) - 100)]
+    #     print(len(a_dif))
+    #     x, y = zip(*a_dif_ds)
+    #     t = np.array(list(range(len(a_dif) - 100)))
+    #     plt.subplot(2, 1, 1);
+    #     plt.cla()
+    #     plt.plot(t, x)
+    #     plt.subplot(2, 1, 2);
+    #     plt.cla()
+    #     plt.plot(t, y)
+    #     plt.draw()
+    #     plt.pause(0.01)
 
     # show the frame to our screen
     cv2.imshow("Frame", frame)

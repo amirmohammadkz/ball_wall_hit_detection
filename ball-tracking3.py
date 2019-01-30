@@ -1,3 +1,4 @@
+import copy
 import itertools
 import math
 import random
@@ -11,7 +12,6 @@ import imutils
 import time
 
 from statistics import mean
-import numpy as np
 
 
 def calculate_dif(p1, p2):
@@ -22,7 +22,7 @@ def calculate_dif(p1, p2):
 
 
 def calculate_size(p1):
-    return max(calculate_distance((0, 0), p1), 0.0001)
+    return calculate_distance((0, 0), p1)
 
 
 def calculate_distance(p1, p2):
@@ -30,11 +30,14 @@ def calculate_distance(p1, p2):
         return None
 
     dif = calculate_dif(p1, p2)
-    return max(math.sqrt(dif[0] ** 2 + dif[1] ** 2), 0.0001)
+    return math.sqrt(dif[0] ** 2 + dif[1] ** 2)
 
 
 def normal_dif(p1, p2):
     if p1 is None or p2 is None:
+        return None
+
+    if calculate_distance(p1, p2) == 0:
         return None
 
     return calculate_dif(p1, p2)[0] / calculate_distance(p1, p2), calculate_dif(p1, p2)[1] / calculate_distance(p1, p2)
@@ -68,7 +71,7 @@ ap.add_argument("-b", "--buffer", type=int, default=64,
                 help="max buffer size")
 args = vars(ap.parse_args())
 
-# define the lower and upper boundaries of the "ball_color"
+# define the lower and upper boundaries of the "green"
 # ball in the HSV color space, then initialize the
 # list of tracked points
 redLower = (165, 70, 30)
@@ -88,6 +91,7 @@ v = deque(maxlen=buffer_size)
 a = deque(maxlen=buffer_size)
 a_dif = deque(maxlen=buffer_size)
 dist = deque(maxlen=buffer_size)
+delete_limit = 3
 
 # if a video path was not supplied, grab the reference
 # to the webcam
@@ -107,7 +111,13 @@ background = None
 collision_found = False
 found_counter = 0
 collision_location = None
-collision_locations = []
+collision_locations = [None] * 4
+selected_collision_locations = [None] * 4
+
+collision_by_dif = False
+collision_by_v = False
+collision_by_a = False
+collision_by_a_dif = False
 
 counter = 0
 
@@ -182,6 +192,7 @@ while True:
         # cv2.imshow("canny and background with blur", imutils.resize(np.vstack([edges2, frame1]), height=700))
         # cv2.imshow("canny&background", edges2 & frame1)
         masked = edges2 & frame1
+        # cv2.waitKey()
     else:
         print(np.sum(edges2 / 255.0))
         canny_not_found = np.sum(edges2 / 255.0) < 20
@@ -214,7 +225,7 @@ while True:
     # cv2.imshow("close and close1", imutils.resize(np.vstack([maskClose1, maskClose]), height=700))
     # cv2.imshow("after open_close", maskClose1)
     # time.sleep(0.001)
-    # cv2.waitKey()
+
     # find contours in the mask and initialize the current
     # (x, y) center of the ball
 
@@ -280,7 +291,6 @@ while True:
         # print("(p2: %s, p1: %s)" % (str(pts[0]), str(pts[1])))
         dif = normal_dif(pts[1], pts[0])
         v.appendleft(dif)
-
         dist.appendleft(calculate_distance(pts[1], pts[0]))
     if len(v) > 1:
         dif = calculate_dif(v[1], v[0])
@@ -312,64 +322,96 @@ while True:
 
     cv2.imshow("line", plot)
 
-    if collision_found and collision_location:
-        cv2.circle(frame, collision_location, 5, (0, 255, 0))
-        for collision in collision_locations:
-            cv2.circle(frame, collision, 5, (0, 255, 0))
+    if len(dist) >= 2:
+        print("checking distance")
+        d1, d2 = dist[0], dist[1]
+        if d1 and d2 and d1 > (d2 + 1.5):
+            print("col found")
+            collision_by_dif = True
+            collision_locations[0] = pts[1]
+            # cv2.circle(frame, pts[1], 20, (255, 0, 0))
 
-    # if not collision_found and len(dist) >= 2:
-    #     print("checking distance")
-    #     d1, d2 = dist[0], dist[1]
-    #     if d1 and d2 and d1 > (d2 + 1.5):
-    #         print("col found")
-    #         collision_found = True
-    #         collision_location = pts[1]
-    #         cv2.circle(frame, pts[1], 20, (255, 0, 0))
-
-    if not collision_found and len(v) >= 2:
+    if len(v) >= 2:
         print("checking distance")
         d1, d2 = v[0], v[1]
-        if d1 and d2 and (d1[0] * d2[0]) < 0:
+        if d1 and d2 and ((d1[0] * d2[0]) < 0 or (d1[1] * d2[1]) < 0):
             print("col found")
-            collision_found = True
-            collision_location = pts[1]
-            cv2.circle(frame, pts[1], 20, (255, 0, 0))
+            # collision_found = True
+            collision_by_v = True
+            # collision_location = pts[1]
+            collision_locations[1] = pts[1]
+            # cv2.circle(frame, pts[1], 20, (255, 0, 0))
 
     # if collision_found:
     #     found_counter += 1
     #     if found_counter == 2:
 
-    # if len(a_mean) > 0:
-    #     d1, d2 = a[0], a_mean
-    #     if d1 and d2:
-    #         print("difference:%s" % (d1[0] - d2[0]))
-    # if not collision_found and len(a_mean) > 0:
-    #     d1, d2 = a[0], a_mean
-    #     if d1 and d2 and (d1[0] * d2[0]) < 0 and len(a) > 3 and np.abs(d1[0] - d2[0]) > 0.15:
-    #         collision_found = True
-    #         collision_location = pts[0]
-    #         collision_locations.append(pts[0])
-    #         cv2.circle(frame, pts[0], 20, (0, 255, 0))
-
-    # if not collision_found and len(a_dif_mean) > 0:
-    #     d1, d2 = a_dif[0], a_dif_mean
-    #     if d1 and d2 and len(a_dif) >= 10:
-    #         if calculate_size(d1) / calculate_size(d2) >= 5:
-    #             collision_found = True
-    #             collision_location = pts[0]
-    #             collision_locations.append(pts[0])
-    #             cv2.circle(frame, pts[0], 20, (0, 255, 0))
+    if len(a_mean) > 0:
+        d1, d2 = a[0], a_mean
+        if d1 and d2:
+            print("difference:%s" % (d1[0] - d2[0]))
+    if len(a_mean) > 0:
+        d1, d2 = a[0], a_mean
+        if d1 and d2 and (d1[0] * d2[0]) < 0 and len(a) > 3:
+            collision_by_a = True
+            # collision_location = pts[0]
+            collision_locations[2] = pts[0]
+            # cv2.circle(frame, pts[0], 20, (0, 255, 0))
 
     if len(a_dif_mean) > 0:
         d1, d2 = a_dif[0], a_dif_mean
-        if d1 and d2 and len(a_dif) > 3:
-            print("(a_dif: %s, a_dif_mean: %s, ratio: %s)" % (
-                str(calculate_size(d1)), str(calculate_size(d2)), str(calculate_size(d1) / calculate_size(d2))))
+        if d1 and d2 and (calculate_size(d1) / calculate_size(d2) >= 3) < 0 and len(a_dif) > 3:
+            collision_by_a_dif = True
+            # collision_location = pts[0]
+            collision_locations[3] = pts[0]
+            # cv2.circle(frame, pts[0], 20, (0, 255, 0))
 
+    votes = [True for v in [collision_by_dif, collision_by_v, collision_by_a] if v]
+    print("num of votes:", len(votes))
+    if not collision_found and len(votes) >= 2:
+        collision_found = True
+        collision_location = pts[0]
+        selected_collision_locations = copy.deepcopy(collision_locations)
+
+    if collision_found and collision_location:
+        # cv2.circle(frame, collision_location, 5, (0, 255, 0))
+        # if collision_by_a and selected_collision_locations[2]:
+        #     cv2.circle(frame, selected_collision_locations[2], 5, (0, 255, 0))
+        # else:
+        #     for collision in selected_collision_locations:
+        #         if collision:
+        #             cv2.circle(frame, collision, 5, (0, 255, 0))
+        cv2.circle(frame, collision_location, 5, (0, 255, 0))
+
+    # if len(pts) >= 2 and any([(pts[i] is None) for i in range(2)]):
+    #     valid_points = [pts[i] for i in range(len(pts)) if not (pts[i] is None)]
+    #     if len(valid_points) > 0:
+    #         last_point = pts[0]
+    #
+    #         if 0 <= last_point[0] <= 100 \
+    #             or frame.shape-100 <= last_point[0] < frame.shape \
+    #             or frame.shape-100 <= last_point[0] < frame.shape
+
+    if len(pts) >= delete_limit and all([(pts[i] is None) for i in range(delete_limit)]):
+        print("col removed")
+        collision_found = False
+
+        collision_by_dif = False
+        collision_by_v = False
+        collision_by_a = False
+        collision_by_a_dif = False
+
+        collision_locations = [None] * 4
     if len(pts) >= 5 and all([(pts[i] is None) for i in range(5)]):
         print("col removed")
         collision_found = False
-        collision_locations = []
+
+        collision_by_dif = False
+        collision_by_v = False
+        collision_by_a = False
+        collision_by_a_dif = False
+
+        collision_locations = [None] * 4
 
     # if (counter + 1) % 10 == 0 and len(a_dif) > 110:
     #     plt.cla()
